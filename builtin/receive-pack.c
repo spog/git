@@ -1311,6 +1311,7 @@ static int update_shallow_ref(struct command *cmd, struct shallow_info *si)
 	struct shallow_lock shallow_lock = SHALLOW_LOCK_INIT;
 	struct oid_array extra = OID_ARRAY_INIT;
 	struct check_connected_options opt = CHECK_CONNECTED_INIT;
+	struct command *next = cmd->next;
 	uint32_t mask = 1 << (cmd->index % 32);
 	int i;
 
@@ -1329,6 +1330,9 @@ static int update_shallow_ref(struct command *cmd, struct shallow_info *si)
 		oid_array_clear(&extra);
 		return -1;
 	}
+	/* check_connected() above breaks the commands list - restore it
+	 * to process all anchors refs */
+	cmd->next = next;
 
 	commit_shallow_file(the_repository, &shallow_lock);
 
@@ -2664,6 +2668,16 @@ int cmd_receive_pack(int argc,
 			struct command *cmd;
 			for (cmd = commands; cmd; cmd = cmd->next)
 				cmd->error_string = "inconsistent push options";
+		}
+
+		if (!shallow_update) {
+			struct command *cmd;
+			for (cmd = commands; cmd; cmd = cmd->next)
+				if (cmd->ref_name)
+					if (starts_with(cmd->ref_name, "refs/anchors/")) {
+						shallow_update = 1;
+						break;
+					}
 		}
 
 		prepare_shallow_info(&si, &shallow);
